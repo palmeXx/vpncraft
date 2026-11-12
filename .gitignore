@@ -11,11 +11,13 @@ coverage.*
 go.work
 go.work.sum
 
+# Sniff mode output (default names: wc3_broadcasts.log, wc3_packets.bin)
+wc3_*.log
+wc3_*.bin
+
 # Python prototype leftovers (see branch first-try-with-python)
 venv/
 vpncraft.spec
-wc3_broadcasts.log
-wc3_packets.bin
 
 # OS / editor
 .DS_Store
