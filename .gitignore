@@ -1,0 +1,23 @@
+# Build output
+/bin/
+/build/
+/dist/
+
+# Go
+*.exe
+*.test
+*.out
+coverage.*
+go.work
+go.work.sum
+
+# Python prototype leftovers (see branch first-try-with-python)
+venv/
+vpncraft.spec
+wc3_broadcasts.log
+wc3_packets.bin
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
