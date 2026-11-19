@@ -147,3 +147,33 @@ func TestChecksumKnownVector(t *testing.T) {
 		t.Errorf("odd-length checksum = %#04x, want 0x0100", got)
 	}
 }
+
+func TestBuildIPv4(t *testing.T) {
+	src, dst := netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("198.51.100.7")
+	udp := BuildUDP(netip.AddrPortFrom(src, 6112), netip.AddrPortFrom(dst, 6112), []byte{0xF7, 0x2F, 0x10, 0x00})
+
+	b := BuildIPv4(src, dst, 0x1234, udp)
+
+	if len(b) != ipv4HeaderLen+len(udp) || b[0] != 0x45 {
+		t.Fatalf("version/IHL = %#x, len = %d", b[0], len(b))
+	}
+	if got := int(binary.BigEndian.Uint16(b[2:4])); got != len(b) {
+		t.Errorf("total length = %d, want %d", got, len(b))
+	}
+	if got := binary.BigEndian.Uint16(b[4:6]); got != 0x1234 {
+		t.Errorf("identification = %#x", got)
+	}
+	if b[8] != defaultTTL || b[9] != protoUDP || binary.BigEndian.Uint16(b[6:8]) != 0 {
+		t.Errorf("ttl/proto/frag = %d/%d/%#x", b[8], b[9], binary.BigEndian.Uint16(b[6:8]))
+	}
+	if !bytes.Equal(b[12:16], src.AsSlice()) || !bytes.Equal(b[16:20], dst.AsSlice()) {
+		t.Errorf("addresses = % x / % x", b[12:16], b[16:20])
+	}
+	// A valid header checksums to 0xffff.
+	if got := fold(checksum(0, b[:ipv4HeaderLen])); got != 0xffff {
+		t.Errorf("header checksum verification = %#04x, want 0xffff", got)
+	}
+	if !bytes.Equal(b[ipv4HeaderLen:], udp) {
+		t.Error("UDP segment not copied")
+	}
+}

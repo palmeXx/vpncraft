@@ -26,6 +26,8 @@ type rawReader struct {
 	label string
 }
 
+var _ reader = (*rawReader)(nil)
+
 func open(iface string, port uint16) ([]reader, error) {
 	_ = port // SIO_RCVALL has no kernel filter; Run filters by port in user space.
 

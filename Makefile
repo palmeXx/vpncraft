@@ -58,8 +58,9 @@ fmt: ## Format code (gofmt + goimports via golangci-lint)
 fmt-check: ## Fail if code is not formatted
 	@out="$$(gofmt -l .)"; if [ -n "$$out" ]; then echo "[!] Unformatted files:"; echo "$$out"; exit 1; fi
 
-vet: ## Run go vet for every target OS
-	@for os in $(LINT_OS); do echo "[*] go vet ($$os)"; GOOS=$$os $(GO) vet -tags integration ./... || exit 1; done
+vet: ## Run go vet (incl. tests) for every release platform; catches missing per-OS implementations
+	@for p in $(PLATFORMS); do echo "[*] go vet ($$p)"; \
+		GOOS=$${p%/*} GOARCH=$${p#*/} $(GO) vet -tags integration ./... || exit 1; done
 
 lint: ## Run golangci-lint for every target OS (build-tagged files included)
 	@command -v $(GOLANGCI_LINT) >/dev/null || { echo "[!] golangci-lint not found: https://golangci-lint.run/welcome/install/"; exit 1; }
@@ -95,9 +96,11 @@ test-integration-privileged: ## Run raw-socket integration tests and privileged 
 	@mkdir -p $(BIN_DIR)
 	@$(GO) test -c -tags integration -o $(BIN_DIR)/integration.test ./test/integration
 	@$(GO) test -c -o $(BIN_DIR)/capture.test ./internal/capture
+	@$(GO) test -c -o $(BIN_DIR)/relay.test ./internal/relay
 	@cd test/integration && sudo ../../$(BIN_DIR)/integration.test -test.v -test.count=1 \
 		-test.run 'TestCaptureLoopback|TestRawForwarderSourcePort|TestSweepLoopback'
 	@cd internal/capture && sudo ../../$(BIN_DIR)/capture.test -test.v -test.count=1 -test.run 'TestOpen'
+	@cd internal/relay && sudo ../../$(BIN_DIR)/relay.test -test.v -test.count=1 -test.run 'TestOpenRawConn'
 
 FUZZTIME ?= 30s
 fuzz: ## Fuzz packet parsers (FUZZTIME=30s)

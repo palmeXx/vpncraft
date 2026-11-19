@@ -47,6 +47,13 @@ linters:
         linters:
           - gosec
           - errcheck
+      # Release helper: runs git with refs/flags from the maintainer or workflow
+      # (no shell). gosec's taint analysis reports this inconsistently across
+      # environments, so a path rule is used instead of a nolint directive.
+      - path: tools/
+        linters:
+          - gosec
+        text: "G204|G702"
 
 formatters:
   enable:

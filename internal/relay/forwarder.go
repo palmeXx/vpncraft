@@ -7,8 +7,6 @@ import (
 	"net"
 	"net/netip"
 	"sync"
-
-	"golang.org/x/net/ipv4"
 )
 
 const (
@@ -22,26 +20,27 @@ const (
 // IPv4 socket (IP_HDRINCL). Unlike a bound UDP socket it does not compete with
 // a local application for that port, while replies still reach it.
 type RawForwarder struct {
-	conn    *ipv4.RawConn
+	conn    rawConn
 	srcPort uint16
 
 	mu   sync.Mutex
 	srcs map[netip.Addr]netip.Addr // destination -> route source address
 }
 
+// rawConn sends a UDP segment (header + payload) in an IPv4 packet with the
+// given addresses. Implementations are platform specific (forwarder_*.go).
+type rawConn interface {
+	send(src, dst netip.Addr, udp []byte) error
+	Close() error
+}
+
 // NewRawForwarder opens a send-only raw socket (root/Administrator required).
 func NewRawForwarder(srcPort uint16) (*RawForwarder, error) {
-	// IPPROTO_RAW: the kernel never delivers inbound packets to this socket.
-	pc, err := net.ListenPacket("ip4:255", "0.0.0.0")
+	conn, err := openRawConn()
 	if err != nil {
-		return nil, fmt.Errorf("open raw IPv4 socket: %w", err)
+		return nil, err
 	}
-	rc, err := ipv4.NewRawConn(pc)
-	if err != nil {
-		_ = pc.Close()
-		return nil, fmt.Errorf("enable IP_HDRINCL: %w", err)
-	}
-	return &RawForwarder{conn: rc, srcPort: srcPort, srcs: make(map[netip.Addr]netip.Addr)}, nil
+	return &RawForwarder{conn: conn, srcPort: srcPort, srcs: make(map[netip.Addr]netip.Addr)}, nil
 }
 
 // Forward sends payload to dst, using the kernel-selected route source address.
@@ -51,16 +50,7 @@ func (f *RawForwarder) Forward(payload []byte, dst netip.AddrPort) error {
 		return err
 	}
 	udp := BuildUDP(netip.AddrPortFrom(src, f.srcPort), dst, payload)
-	h := &ipv4.Header{
-		Version:  ipv4.Version,
-		Len:      ipv4HeaderLen,
-		TotalLen: ipv4HeaderLen + len(udp),
-		TTL:      defaultTTL,
-		Protocol: protoUDP,
-		Src:      src.AsSlice(),
-		Dst:      dst.Addr().AsSlice(),
-	}
-	if err := f.conn.WriteTo(h, udp, nil); err != nil {
+	if err := f.conn.send(src, dst.Addr(), udp); err != nil {
 		return fmt.Errorf("send to %s: %w", dst, err)
 	}
 	return nil
@@ -113,6 +103,24 @@ func BuildUDP(src, dst netip.AddrPort, payload []byte) []byte {
 		csum = 0xffff // RFC 768: transmitted all-ones when computed checksum is zero
 	}
 	binary.BigEndian.PutUint16(b[6:8], csum)
+	return b
+}
+
+// BuildIPv4 returns an IPv4 packet (20-byte header without options, valid
+// header checksum) carrying the UDP segment udp. All fields are in network
+// byte order, as Windows expects with IP_HDRINCL.
+func BuildIPv4(src, dst netip.Addr, id uint16, udp []byte) []byte {
+	b := make([]byte, ipv4HeaderLen+len(udp))
+	b[0] = 4<<4 | ipv4HeaderLen/4
+	binary.BigEndian.PutUint16(b[2:4], uint16(len(b))) //nolint:gosec // bounded by MTU-sized captures
+	binary.BigEndian.PutUint16(b[4:6], id)
+	b[8] = defaultTTL
+	b[9] = protoUDP
+	s, d := src.As4(), dst.As4()
+	copy(b[12:16], s[:])
+	copy(b[16:20], d[:])
+	binary.BigEndian.PutUint16(b[10:12], ^fold(checksum(0, b[:ipv4HeaderLen])))
+	copy(b[ipv4HeaderLen:], udp)
 	return b
 }
 

@@ -33,7 +33,7 @@ type repository struct {
 }
 
 func (r repository) git(args ...string) (string, error) {
-	cmd := exec.Command("git", args...) //nolint:gosec // fixed binary; arguments are refs/flags given by the maintainer or workflow, no shell involved
+	cmd := exec.Command("git", args...)
 	cmd.Dir = r.dir
 	out, err := cmd.Output()
 	if err != nil {

@@ -30,6 +30,8 @@ type bpfReader struct {
 	pending []byte
 }
 
+var _ reader = (*bpfReader)(nil)
+
 func open(iface string, port uint16) ([]reader, error) {
 	ifaces, err := interfacesFor(iface)
 	if err != nil {

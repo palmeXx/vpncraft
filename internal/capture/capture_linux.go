@@ -24,6 +24,8 @@ type packetReader struct {
 	loopbacks map[int]bool
 }
 
+var _ reader = (*packetReader)(nil)
+
 func open(iface string, port uint16) ([]reader, error) {
 	ifindex := 0 // 0 = all interfaces
 	label := AllInterfaces
