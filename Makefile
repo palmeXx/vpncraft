@@ -12,7 +12,8 @@ GOLANGCI_LINT ?= golangci-lint
 GOVULNCHECK_VERSION ?= v1.9.0
 
 # Build metadata, injected via -ldflags -X and printed at startup.
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# The version comes from version.json, the single source of truth for releases.
+VERSION ?= $(shell sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' version.json)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -38,7 +39,7 @@ endef
 .DEFAULT_GOAL := help
 .PHONY: help all check fmt fmt-check vet lint vuln test test-race cover test-integration \
 	test-integration-privileged fuzz build build-all build-linux build-windows build-darwin \
-	checksums run tidy clean
+	checksums manifest release-check release-notes run tidy clean
 
 help: ## Show this help
 	@echo "$(APP) $(VERSION) (commit $(COMMIT))"
@@ -123,6 +124,22 @@ build-%:
 
 checksums: build-all ## Write SHA-256 checksums for dist/
 	@cd $(DIST_DIR) && shasum -a 256 $(APP)_* > SHA256SUMS && cat SHA256SUMS
+
+manifest: checksums ## Release assets: binaries, SHA256SUMS and manifest.json in dist/
+	@$(RELEASE) manifest --dist $(DIST_DIR) --commit $(COMMIT) --date $(DATE) --output $(DIST_DIR)/manifest.json
+	@echo "[+] $(DIST_DIR)/manifest.json ($(VERSION))"
+
+## ---- Release -------------------------------------------------------------
+
+RELEASE := $(GO) run ./tools/release
+# Same check as on pull requests; BASE=main compares with the local branch.
+BASE ?= origin/main
+
+release-check: ## Check version.json and CHANGELOG.md as next release (BASE=origin/main)
+	@$(RELEASE) check --base $(BASE)
+
+release-notes: ## Preview the release notes (REF=v0.1.0 for an existing release)
+	@$(RELEASE) notes $(if $(REF),--ref $(REF))
 
 run: build ## Build and run (ARGS="-m relay"); raw sockets need sudo
 	@$(BIN_DIR)/$(APP) $(ARGS)

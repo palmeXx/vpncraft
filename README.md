@@ -40,6 +40,8 @@ with an interactive terminal UI and a headless mode for scripts and services.
 - [Typical setup with friends](#typical-setup-with-friends)
 - [Troubleshooting](#troubleshooting)
 - [Building from source](#building-from-source)
+- [Contributing](#contributing)
+  - [Release process](#release-process)
 - [Platform notes](#platform-notes)
 
 ---
@@ -94,7 +96,34 @@ Download the binary for your platform from the
 | Windows x86-64        | `vpncraft_windows_amd64.exe`   |
 | Windows ARM64         | `vpncraft_windows_arm64.exe`   |
 
-Each release also contains `SHA256SUMS`.
+Each release also contains `SHA256SUMS` and a `manifest.json` that describes
+the release for scripts and update checks (version, tag, commit, build date and,
+per binary, OS, architecture, size, SHA-256 and download URL):
+
+```json
+{
+  "name": "vpncraft",
+  "version": "0.1.0",
+  "tag": "v0.1.0",
+  "prerelease": false,
+  "commit": "abc1234",
+  "date": "2026-01-01T00:00:00Z",
+  "repository": "https://github.com/palmeXx/vpncraft",
+  "assets": [
+    {
+      "os": "linux",
+      "arch": "amd64",
+      "file": "vpncraft_linux_amd64",
+      "size": 5853936,
+      "sha256": "…",
+      "url": "https://github.com/palmeXx/vpncraft/releases/download/v0.1.0/vpncraft_linux_amd64"
+    }
+  ]
+}
+```
+
+The manifest of the newest release is always at
+`https://github.com/palmeXx/vpncraft/releases/latest/download/manifest.json`.
 
 **Linux / macOS**
 
@@ -199,7 +228,7 @@ See [Building from source](#building-from-source).
 
 ```sh
 vpncraft -version
-# [*] vpncraft v1.0.0 (commit abc1234, built 2026-01-01T00:00:00Z, linux/amd64, go1.27.4)
+# [*] vpncraft 0.1.0 (commit abc1234, built 2026-01-01T00:00:00Z, linux/amd64, go1.27.4)
 ```
 
 The commit hash of the build is printed every time vpncraft starts.
@@ -582,12 +611,14 @@ cd vpncraft
 make build          # host binary → bin/vpncraft
 make build-all      # all platforms → dist/vpncraft_<os>_<arch>[.exe]
 make checksums      # build-all + dist/SHA256SUMS
+make manifest       # checksums + dist/manifest.json (all release assets)
 ```
 
 All builds use `CGO_ENABLED=0`, so cross-compiling works from any host.
 Version, commit hash and build date are injected via `-ldflags -X` into
-`internal/buildinfo` and default to `git describe`, the short commit hash and the
-current UTC time. Override them with `make build VERSION=v1.2.3`.
+`internal/buildinfo`. The version comes from `version.json`, the commit is the
+short hash of `HEAD` and the date the current UTC time. Override them with
+`make build VERSION=1.2.3-dev`.
 
 Run `make help` to list all targets:
 
@@ -601,13 +632,16 @@ Run `make help` to list all targets:
 | `make test-integration-privileged` | raw-socket integration tests via `sudo` |
 | `make fuzz FUZZTIME=30s` | fuzz the packet parsers |
 | `make build-linux` / `build-windows` / `build-darwin` | per-OS release binaries |
+| `make manifest` | all release assets: binaries, `SHA256SUMS`, `manifest.json` |
+| `make release-check` | check `version.json` and `CHANGELOG.md` as next release (`BASE=origin/main`) |
+| `make release-notes` | preview the release notes (`REF=v0.1.0` for an existing release) |
 | `make run ARGS="-m relay -i wt0"` | build and run |
 | `make clean` | remove `bin/`, `dist/`, coverage files and legacy PyInstaller artifacts |
 
-**CI** (GitHub Actions): lint, `govulncheck` and tests on Linux, macOS and Windows plus
-release builds for every push to `main` and every pull request. Pushing a tag
-`v*` additionally creates a GitHub release with all binaries and `SHA256SUMS`.
-Tags containing `-` (e.g. `v1.0.0-rc1`) become pre-releases.
+**CI** (GitHub Actions) runs on every pull request and every commit on `main`:
+lint and `govulncheck` for Linux, macOS and Windows, tests on Linux, macOS and
+Windows runners (including the raw-socket tests with root/Administrator rights)
+and the release build. See [Release process](#release-process) for releases.
 
 ### Project layout
 
@@ -623,7 +657,88 @@ internal/sniff/      sniff mode logger
 internal/tui/        Bubble Tea terminal UI
 internal/wc3/        Warcraft III (W3GS) packet decoding
 test/integration/    integration tests (build tag `integration`)
+tools/release/       release helper: version check, release notes, manifest.json
 ```
+
+---
+
+## Contributing
+
+Contributions are welcome: bug reports and ideas as
+[issues](https://github.com/palmeXx/vpncraft/issues), changes as pull requests.
+Every pull request to `main` is the next release, merging it publishes it.
+
+1. For larger changes, open an issue first to agree on the approach.
+2. Fork the repository and create a branch from `main`.
+3. Make the change, add or update tests and run the checks:
+
+   ```sh
+   make check
+   make vuln
+   make test-integration-privileged   # raw-socket tests, asks for sudo
+   ```
+
+4. Decide if the pull request is a release:
+   - **Changes of the tool** are released. Raise `version` in `version.json`
+     and add a `CHANGELOG.md` section for it, see
+     [Release process](#release-process). Check both with `make release-check`
+     and preview the release notes with `make release-notes`.
+   - **Other changes**, like the README, the workflows or only tests, are not
+     released. Keep the version, the maintainer labels the pull request
+     `no-release`. Only users with write access can set labels, mention it in
+     the pull request.
+
+   If you're unsure, ask in the pull request.
+5. Open the pull request against `main`. The checks `Release check`, `Lint`,
+   `Vulnerability check`, `Test (ubuntu-latest)`, `Test (macos-latest)`,
+   `Test (windows-latest)` and `Build binaries` have to pass.
+6. After the review, the maintainer merges the pull request, which creates the
+   tag and the GitHub release automatically.
+
+Use synthetic data only. Don't put real details of your network, like IP
+addresses, host names or interface details, into tests, issues or shared logs.
+
+### Release process
+
+`version.json` is the single source of truth for the version:
+
+```json
+{
+  "version": "0.2.0"
+}
+```
+
+Versions follow [semantic versioning](https://semver.org/) without a `v`
+(`0.2.0`, pre-releases like `0.2.0-rc.1`). Git tags carry a `v` (`v0.2.0`), as
+Go modules require for `go install …@v0.2.0`.
+
+1. **Pull request:** the workflow `Release check` requires that `version` is
+   greater than on `main`, that the tag doesn't exist yet and that
+   `CHANGELOG.md` has a section for it:
+
+   ```markdown
+   ## [0.2.0] - 2026-12-01
+
+   ### Added
+
+   - …
+   ```
+
+   Pull requests labeled `no-release` skip the check.
+2. **Merge into `main`:** the workflow `Release` runs the full CI on the merged
+   commit. If the tag `v<version>` doesn't exist yet, it then creates the tag on
+   that commit and the GitHub release. Commits whose version already has a tag,
+   e.g. `no-release` pull requests, are only tested.
+3. **Release contents:**
+   - **Assets:** the six binaries, `SHA256SUMS` and `manifest.json`
+   - **Notes:** the `CHANGELOG.md` section of the version, followed by the
+     commits since the previous tag and a compare link
+   - **Pre-releases:** versions with a suffix (`-rc.1`) are marked as pre-release
+
+A release can also be created by pushing a tag that matches `version.json`
+(`git tag v0.2.0 && git push origin v0.2.0`), or by running the `Release`
+workflow manually with an existing tag. That also updates the notes and assets
+of an existing release.
 
 ---
 

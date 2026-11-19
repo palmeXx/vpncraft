@@ -32,6 +32,7 @@ internal/tui/        Bubble Tea v2 UI
 internal/wc3/        W3GS decoding
 internal/buildinfo/  Version/Commit/Date injected via -ldflags -X
 test/integration/    //go:build integration; raw-socket tests skip without root
+tools/release/       release helper (check, version, notes, manifest); dev tool, not shipped
 ```
 
 ---
@@ -72,6 +73,7 @@ test/integration/    //go:build integration; raw-socket tests skip without root
 * **Scan range:** `scan.min_prefix` (default 24) limits *automatic* headless scans. `scan.network` / `-scan-network` overrides detection. Hard maximum for any scan is **/16** (`settings.MaxScanBits`). The TUI offers configured → detected → /16 and /24 around the local IP → custom CIDR. Choosing "detected" clears `scan.network`.
 * **Peer discovery is ICMP only.** Querying VPN daemons (`tailscale status`, `netbird status`) was explicitly declined.
 * **Version banner:** commit hash (via ldflags) is printed at every start. Keep `make build*` injecting `Version/Commit/Date`.
+* **Versioning:** `version.json` is the single source of truth (semver without `v`, e.g. `0.2.0`, `0.2.0-rc.1`); git tags are `v<version>`. Every PR to `main` is a release: bump `version.json` and add a `## [x.y.z] - <date>` section to `CHANGELOG.md` (checked by `make release-check`), unless the maintainer labels it `no-release`.
 * **Sniff output** (`wc3_*.log`, `wc3_*.bin`) is git-ignored. Keep it that way.
 
 ---
@@ -96,7 +98,11 @@ make build-all          # verify cross-compilation of all 6 targets
   * TUI tests drive `Update` with synthetic `tea.KeyPressMsg`s. Background work uses generation-tagged messages; late messages of cancelled operations must be ignored.
   * Raw-socket tests belong in `test/integration` and must skip when not privileged.
   * `config.example.yaml` is validated by a test. Keep it, the flags table in `README.md` and `-h` output in sync.
-* **CI** (`.github/workflows/ci.yml`): jobs lint, vuln, test (ubuntu/macos/windows incl. privileged integration tests) → build (`make checksums`) → release on `v*` tags (`gh release create`, `-` in tag = prerelease). Pin action major versions to current releases.
+* **CI/Release** (modeled on the maintainer's `ha-unifi-oon` repo):
+  * `ci.yml`: lint, vuln, test (ubuntu/macos/windows incl. privileged integration tests) → build (`make manifest`: binaries, `SHA256SUMS`, `manifest.json`). Triggers: pull requests, manual, and `workflow_call` with `ref`.
+  * `release-check.yml`: PRs to `main` must pass `make release-check` (skipped with label `no-release`).
+  * `release.yml`: on push to `main`, `v*` tags or manual tag input it always runs `ci.yml` for the commit, then creates the tag and release if `v<version>` doesn't exist yet. Notes come from the `CHANGELOG.md` section plus commits since the previous tag; a `-` suffix makes a pre-release.
+  * Pin action major versions to current releases.
 
 ---
 
