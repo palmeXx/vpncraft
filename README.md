@@ -615,6 +615,12 @@ make manifest       # checksums + dist/manifest.json (all release assets)
 ```
 
 All builds use `CGO_ENABLED=0`, so cross-compiling works from any host.
+Windows binaries embed the logo as icon (shown in Explorer, the taskbar and the
+desktop shortcut): `make build-windows` generates `cmd/vpncraft/rsrc_windows_*.syso`
+from `docs/vpn_craft_logo_v3.png` with a pinned
+[go-winres](https://github.com/tc-hib/go-winres), and the Go linker picks them up
+automatically. The `.syso` files are generated, not committed; Linux and macOS
+binaries have no icon.
 Version, commit hash and build date are injected via `-ldflags -X` into
 `internal/buildinfo`. The version comes from `version.json`, the commit is the
 short hash of `HEAD` and the date the current UTC time. Override them with
@@ -632,11 +638,12 @@ Run `make help` to list all targets:
 | `make test-integration-privileged` | raw-socket integration tests via `sudo` |
 | `make fuzz FUZZTIME=30s` | fuzz the packet parsers |
 | `make build-linux` / `build-windows` / `build-darwin` | per-OS release binaries |
+| `make winres` | generate the Windows icon resources from the logo (done by `build-windows`) |
 | `make manifest` | all release assets: binaries, `SHA256SUMS`, `manifest.json` |
 | `make release-check` | check `version.json` and `CHANGELOG.md` as next release (`BASE=origin/main`) |
 | `make release-notes` | preview the release notes (`REF=v0.1.0` for an existing release) |
 | `make run ARGS="-m relay -i wt0"` | build and run |
-| `make clean` | remove `bin/`, `dist/`, coverage files and legacy PyInstaller artifacts |
+| `make clean` | remove `bin/`, `dist/`, coverage files, generated `.syso` files and legacy PyInstaller artifacts |
 
 **CI** (GitHub Actions) runs on every pull request and every commit on `main`:
 lint and `govulncheck` for Linux, macOS and Windows, tests on Linux, macOS and

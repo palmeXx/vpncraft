@@ -5,6 +5,10 @@ of its GitHub release, see [Release process](README.md#release-process).
 
 ## [Unreleased]
 
+### Added
+
+- Windows binaries show the vpncraft logo as icon
+
 ## [0.1.0] - 2026-11-19
 
 First release of the Go rewrite.

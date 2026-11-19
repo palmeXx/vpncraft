@@ -73,6 +73,7 @@ tools/release/       release helper (check, version, notes, manifest); dev tool,
 * **TUI vs. headless:** no flags (or only `-config`) on a TTY starts the TUI. Any other flag, `-headless`, or no TTY runs headless.
 * **Scan range:** `scan.min_prefix` (default 24) limits *automatic* headless scans. `scan.network` / `-scan-network` overrides detection. Hard maximum for any scan is **/16** (`settings.MaxScanBits`). The TUI offers configured → detected → /16 and /24 around the local IP → custom CIDR. Choosing "detected" clears `scan.network`.
 * **Peer discovery is ICMP only.** Querying VPN daemons (`tailscale status`, `netbird status`) was explicitly declined.
+* **Windows icon:** `make build-windows` embeds `docs/vpn_craft_logo_v3.png` via pinned go-winres (`GOWINRES_VERSION`) as generated, git-ignored `cmd/vpncraft/rsrc_windows_*.syso`. Icon only (`--manifest none`, no `requireAdministrator`). Linux/macOS binaries get no icon by decision.
 * **Version banner:** commit hash (via ldflags) is printed at every start. Keep `make build*` injecting `Version/Commit/Date`.
 * **Versioning:** `version.json` is the single source of truth (semver without `v`, e.g. `0.2.0`, `0.2.0-rc.1`); git tags are `v<version>`. Every PR to `main` is a release: bump `version.json` and add a `## [x.y.z] - <date>` section to `CHANGELOG.md` (checked by `make release-check`), unless the maintainer labels it `no-release`.
 * **Sniff output** (`wc3_*.log`, `wc3_*.bin`) is git-ignored. Keep it that way.

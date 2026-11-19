@@ -5,6 +5,7 @@
 
 # Go
 *.exe
+*.syso
 *.test
 *.out
 coverage.*

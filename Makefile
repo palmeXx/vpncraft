@@ -10,6 +10,15 @@ GO            ?= go
 GOLANGCI_LINT ?= golangci-lint
 # Pinned so local runs and CI use the same scanner.
 GOVULNCHECK_VERSION ?= v1.9.0
+GOWINRES_VERSION    ?= v0.3.3
+
+# Windows icon: go-winres turns the logo into resource objects that the Go
+# linker picks up automatically for windows/<arch> builds of the main package.
+WINRES_ICON  := docs/vpn_craft_logo_v3.png
+WINRES_DIR   := cmd/$(APP)
+WINRES_AMD64 := $(WINRES_DIR)/rsrc_windows_amd64.syso
+WINRES_ARM64 := $(WINRES_DIR)/rsrc_windows_arm64.syso
+GOWINRES     := $(BIN_DIR)/go-winres-$(GOWINRES_VERSION)
 
 # Build metadata, injected via -ldflags -X and printed at startup.
 # The version comes from version.json, the single source of truth for releases.
@@ -39,7 +48,7 @@ endef
 .DEFAULT_GOAL := help
 .PHONY: help all check fmt fmt-check vet lint vuln test test-race cover test-integration \
 	test-integration-privileged fuzz build build-all build-linux build-windows build-darwin \
-	checksums manifest release-check release-notes run tidy clean
+	checksums manifest release-check release-notes winres run tidy clean
 
 help: ## Show this help
 	@echo "$(APP) $(VERSION) (commit $(COMMIT))"
@@ -71,6 +80,20 @@ $(BIN_DIR)/govulncheck-$(GOVULNCHECK_VERSION):
 	@mkdir -p $(BIN_DIR)
 	@GOBIN=$(abspath $(BIN_DIR)) $(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 	@mv $(BIN_DIR)/govulncheck$(shell $(GO) env GOEXE) $@
+
+# Installed for the host into bin/, version pinned like govulncheck.
+$(GOWINRES):
+	@mkdir -p $(BIN_DIR)
+	@GOBIN=$(abspath $(BIN_DIR)) $(GO) install github.com/tc-hib/go-winres@$(GOWINRES_VERSION)
+	@mv $(BIN_DIR)/go-winres$(shell $(GO) env GOEXE) $@
+
+# One run writes both architectures; regenerated when the logo changes.
+$(WINRES_AMD64): $(WINRES_ICON) | $(GOWINRES)
+	@echo "[*] Generating Windows icon resources from $(WINRES_ICON)"
+	@$(GOWINRES) simply --arch amd64,arm64 --manifest none --icon $(WINRES_ICON) --out $(WINRES_DIR)/rsrc
+$(WINRES_ARM64): $(WINRES_AMD64)
+
+winres: $(WINRES_AMD64) $(WINRES_ARM64) ## Generate Windows icon resources (.syso) from the logo
 
 vuln: $(BIN_DIR)/govulncheck-$(GOVULNCHECK_VERSION) ## Check dependencies and code for known vulnerabilities (govulncheck, every target OS)
 	@for os in $(LINT_OS); do echo "[*] govulncheck ($$os)"; \
@@ -118,8 +141,12 @@ build-all: $(foreach p,$(PLATFORMS),build-$(subst /,-,$(p))) ## Build all releas
 	@echo "[+] Binaries in $(DIST_DIR)/"
 
 build-linux: build-linux-amd64 build-linux-arm64 ## Build Linux amd64 + arm64
-build-windows: build-windows-amd64 build-windows-arm64 ## Build Windows amd64 + arm64
+build-windows: build-windows-amd64 build-windows-arm64 ## Build Windows amd64 + arm64 (with icon)
 build-darwin: build-darwin-amd64 build-darwin-arm64 ## Build macOS amd64 + arm64
+
+# Windows binaries embed the icon; the recipe comes from the build-% pattern rule.
+build-windows-amd64: $(WINRES_AMD64)
+build-windows-arm64: $(WINRES_ARM64)
 
 build-%:
 	@mkdir -p $(DIST_DIR)
@@ -156,5 +183,5 @@ tidy: ## go mod tidy
 LEGACY_ARTIFACTS := build $(APP).spec __pycache__
 
 clean: ## Remove build artifacts, incl. legacy PyInstaller build/ and dist/
-	@rm -rf $(BIN_DIR) $(DIST_DIR) $(LEGACY_ARTIFACTS) coverage.out coverage.html
-	@echo "[+] Cleaned $(BIN_DIR)/ $(DIST_DIR)/ $(LEGACY_ARTIFACTS) coverage.*"
+	@rm -rf $(BIN_DIR) $(DIST_DIR) $(LEGACY_ARTIFACTS) coverage.out coverage.html $(WINRES_DIR)/*.syso
+	@echo "[+] Cleaned $(BIN_DIR)/ $(DIST_DIR)/ $(LEGACY_ARTIFACTS) coverage.* $(WINRES_DIR)/*.syso"
