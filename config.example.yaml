@@ -1,0 +1,23 @@
+# vpncraft example configuration
+# Copy to ~/.config/vpncraft/config.yaml (or $XDG_CONFIG_HOME/vpncraft/config.yaml).
+# Only "interface" is required (unless given with -i); other keys default as shown.
+# Unknown keys are rejected. Command line flags override these values.
+# The addresses below are fictional examples.
+
+mode: relay          # sniff | relay
+interface: wt0       # required (here or via -i): VPN interface, e.g. wt0 (NetBird/Linux), utun4 (macOS); sniff: or "all"
+
+peers:               # static peer group (relay targets), IPv4 only
+  - 100.64.0.2
+  - 100.64.0.3
+
+scan:
+  enabled: true      # relay mode: add ping-scan results of the interface subnet to the peer group
+  rate: 5000         # ICMP echo requests per second
+  timeout: 1s        # wait for replies after the last request
+  min_prefix: 24     # detected networks larger than this (e.g. Tailscale's /10) are not scanned
+  network: ""        # explicit scan range, e.g. 100.64.12.0/24 (at most /16); "" = detect
+
+sniff:
+  log_file: wc3_broadcasts.log
+  bin_file: wc3_packets.bin

@@ -1,0 +1,65 @@
+version: "2"
+
+run:
+  timeout: 5m
+  build-tags:
+    - integration
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - errorlint
+    - gocritic
+    - gosec
+    - intrange
+    - misspell
+    - nolintlint
+    - perfsprint
+    - revive
+    - unconvert
+    - unparam
+    - usestdlibvars
+  settings:
+    gosec:
+      excludes:
+        - G304 # file paths come from CLI flags by design
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: error-strings
+        - name: error-naming
+        - name: receiver-naming
+        - name: indent-error-flow
+        - name: unused-parameter
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+      # Release helper: runs git with refs/flags from the maintainer or workflow
+      # (no shell). gosec's taint analysis reports this inconsistently across
+      # environments, so a path rule is used instead of a nolint directive.
+      - path: tools/
+        linters:
+          - gosec
+        text: "G204|G702"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/palmeXx/vpncraft

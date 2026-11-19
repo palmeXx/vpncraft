@@ -1,0 +1,109 @@
+name: CI
+
+# Lint, vulnerability check, tests on Linux/macOS/Windows and the release
+# build, with the same make targets as locally.
+# - pull request: runs here directly
+# - main and version tags: run through the release workflow (workflow_call),
+#   which tests the commit before it is released
+# - manual run: tests the selected branch
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to test, the triggering ref by default
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOLANGCI_LINT_VERSION: v2.15.0
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          install-only: true
+      # Lints and vets linux, darwin and windows build-tagged sources.
+      - run: make fmt-check vet lint
+
+  vuln:
+    name: Vulnerability check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # govulncheck for linux, darwin and windows; version pinned in the Makefile.
+      - run: make vuln
+
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Unit tests (race)
+        run: CGO_ENABLED=1 go test -race -count=1 ./...
+      - name: Integration tests
+        if: runner.os == 'Windows' # runner is Administrator: raw-socket tests run
+        run: go test -count=1 -tags integration -v ./test/integration/...
+      - name: Integration tests
+        if: runner.os != 'Windows'
+        run: |
+          make test-integration
+          make test-integration-privileged # passwordless sudo on hosted runners
+
+  build:
+    name: Build binaries
+    needs: [lint, vuln, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # Binaries, SHA256SUMS and manifest.json; version from version.json.
+      - name: Build release assets
+        run: make manifest
+      - name: Show embedded build info
+        run: ./dist/vpncraft_linux_amd64 -version
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vpncraft-binaries
+          path: dist/
+          if-no-files-found: error

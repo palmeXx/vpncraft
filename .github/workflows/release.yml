@@ -1,0 +1,126 @@
+name: Release
+
+# Tests every commit on main and creates a GitHub release after the CI passed:
+# - push to main: if no tag v<version> of version.json exists yet, the tag is
+#   created together with the release, so merging a pull request releases it.
+#   Otherwise (e.g. a pull request labeled no-release) only the CI runs.
+# - push of a version tag, e.g. v0.2.0: has to match version.json
+# - manual run with an existing tag, e.g. to update the notes or assets
+# Release assets: binaries, SHA256SUMS and manifest.json. The notes are the
+# section of the version in CHANGELOG.md, followed by the commits since the
+# previous tag. Versions with a pre-release suffix (0.2.0-rc.1) become
+# pre-releases.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to create the release for, e.g. v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.prepare.outputs.tag }}
+      ref: ${{ steps.prepare.outputs.ref }}
+      release: ${{ steps.prepare.outputs.release }}
+      prerelease: ${{ steps.prepare.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - id: prepare
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "branch" && -z "$INPUT_TAG" ]]; then
+            version=$(go run ./tools/release version --ref "$GITHUB_SHA")
+            tag="v$version"
+            ref=$GITHUB_SHA
+            if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+              echo "Tag $tag exists, testing only"
+              release=false
+            else
+              release=true
+            fi
+          else
+            tag=${INPUT_TAG:-$GITHUB_REF_NAME}
+            ref=$tag
+            version=$(go run ./tools/release version --ref "$tag")
+            if [[ "v$version" != "$tag" ]]; then
+              echo "::error::Tag $tag doesn't match version $version in version.json"
+              exit 1
+            fi
+            release=true
+          fi
+          prerelease=false
+          if [[ "$version" == *-* ]]; then prerelease=true; fi
+          {
+            echo "tag=$tag"
+            echo "ref=$ref"
+            echo "release=$release"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+  ci:
+    name: CI
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.prepare.outputs.ref }}
+
+  release:
+    name: Release
+    needs: [prepare, ci]
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    concurrency: release-${{ needs.prepare.outputs.tag }}
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      REF: ${{ needs.prepare.outputs.ref }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # A manual run reads CHANGELOG.md of the branch it runs on, otherwise
+      # the one of the released commit
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v8
+        with:
+          name: vpncraft-binaries
+          path: dist
+      - name: Build release notes
+        run: go run ./tools/release notes --ref "$REF" --output "$RUNNER_TEMP/notes.md"
+      - name: Create or update release
+        run: |
+          options=(--title "vpncraft $TAG" --notes-file "$RUNNER_TEMP/notes.md")
+          if [[ "$PRERELEASE" == "true" ]]; then
+            options+=(--prerelease)
+          fi
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" "${options[@]}"
+            gh release upload "$TAG" dist/* --clobber
+          elif git rev-parse -q --verify "refs/tags/$TAG" > /dev/null; then
+            gh release create "$TAG" dist/* --verify-tag "${options[@]}"
+          else
+            # Creates the tag on the released commit
+            gh release create "$TAG" dist/* --target "$REF" "${options[@]}"
+          fi
