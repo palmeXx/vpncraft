@@ -253,3 +253,37 @@ func TestEmptyNetworkRoundTrip(t *testing.T) {
 		t.Errorf("scan = %+v", got.Scan)
 	}
 }
+
+// TestSaveOverwrites covers replacing an existing file (second 'w' in the TUI),
+// which uses os.Rename over the target; on Windows that is MoveFileEx with
+// MOVEFILE_REPLACE_EXISTING.
+func TestSaveOverwrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	first := Default()
+	first.Interface = "wg0"
+	if err := Save(path, first); err != nil {
+		t.Fatalf("first Save() error = %v", err)
+	}
+
+	second := Default()
+	second.Interface = "wt0"
+	second.Mode = ModeRelay
+	if err := Save(path, second); err != nil {
+		t.Fatalf("second Save() error = %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got.Interface != "wt0" || got.Mode != ModeRelay {
+		t.Errorf("Load() = %+v, want second save", got)
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("config dir has %d entries, want 1 (no temp files left)", len(entries))
+	}
+}

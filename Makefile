@@ -90,11 +90,13 @@ cover: ## Run unit tests with coverage report (coverage.html)
 test-integration: ## Run integration tests (raw-socket tests skip without root)
 	@$(GO) test -count=1 -tags integration -v ./test/integration/...
 
-test-integration-privileged: ## Run raw-socket integration tests via sudo
+test-integration-privileged: ## Run raw-socket integration tests and privileged capture unit tests via sudo
 	@mkdir -p $(BIN_DIR)
 	@$(GO) test -c -tags integration -o $(BIN_DIR)/integration.test ./test/integration
+	@$(GO) test -c -o $(BIN_DIR)/capture.test ./internal/capture
 	@cd test/integration && sudo ../../$(BIN_DIR)/integration.test -test.v -test.count=1 \
 		-test.run 'TestCaptureLoopback|TestRawForwarderSourcePort|TestSweepLoopback'
+	@cd internal/capture && sudo ../../$(BIN_DIR)/capture.test -test.v -test.count=1 -test.run 'TestOpen'
 
 FUZZTIME ?= 30s
 fuzz: ## Fuzz packet parsers (FUZZTIME=30s)

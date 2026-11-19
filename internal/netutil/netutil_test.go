@@ -2,6 +2,7 @@ package netutil
 
 import (
 	"errors"
+	"net"
 	"net/netip"
 	"testing"
 )
@@ -58,6 +59,29 @@ func TestRoutes(t *testing.T) {
 			t.Errorf("non-IPv4 route %v", r)
 		}
 	}
+
+	// Every supported OS has a 127.0.0.0/8 route on the loopback interface.
+	// Finding it verifies address, prefix length and interface index decoding.
+	lo := loopbackIndex(t)
+	local := netip.MustParseAddr("127.0.0.1")
+	if _, ok := NetworkFromRoutes(routes, lo, local); !ok {
+		t.Fatalf("no route containing %s via loopback (index %d) in %d routes", local, lo, len(routes))
+	}
+}
+
+func loopbackIndex(t *testing.T) int {
+	t.Helper()
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ifi := range ifaces {
+		if ifi.Flags&net.FlagLoopback != 0 && ifi.Flags&net.FlagUp != 0 {
+			return ifi.Index
+		}
+	}
+	t.Skip("no loopback interface")
+	return 0
 }
 
 func TestDetectNetworkLoopback(t *testing.T) {

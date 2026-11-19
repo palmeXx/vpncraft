@@ -4,6 +4,7 @@ package capture
 
 import (
 	"encoding/binary"
+	"errors"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -44,5 +45,28 @@ func TestNextBPFFrameTruncated(t *testing.T) {
 	}
 	if _, _, ok := nextBPFFrame(rec[:4]); ok {
 		t.Error("nextBPFFrame() ok = true for short header")
+	}
+}
+
+func TestOpenUnknownInterface(t *testing.T) {
+	_, err := open("does-not-exist-0", 6112)
+	if err == nil || errors.Is(err, ErrPermission) {
+		t.Errorf("open(unknown) error = %v, want lookup error", err)
+	}
+}
+
+// TestOpen checks both outcomes: without root, /dev/bpf access must map to
+// ErrPermission; as root, one BPF reader per capable interface must open.
+func TestOpen(t *testing.T) {
+	readers, err := open(AllInterfaces, 6112)
+	if err != nil {
+		if !errors.Is(err, ErrPermission) {
+			t.Fatalf("open() error = %v, want ErrPermission when unprivileged", err)
+		}
+		t.Skip("no /dev/bpf access: permission mapping verified, socket path skipped")
+	}
+	t.Cleanup(func() { closeAll(readers) })
+	if len(readers) == 0 {
+		t.Fatal("open() returned no readers")
 	}
 }

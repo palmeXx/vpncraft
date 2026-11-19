@@ -44,7 +44,12 @@ func Run(ctx context.Context, iface string, port uint16, handle func(Packet)) er
 	if len(readers) == 0 {
 		return fmt.Errorf("no capturable interface for %q", iface)
 	}
+	return run(ctx, readers, port, handle)
+}
 
+// run multiplexes readers until ctx is cancelled or every reader failed.
+// All readers are closed on return.
+func run(ctx context.Context, readers []reader, port uint16, handle func(Packet)) error {
 	var (
 		wg      sync.WaitGroup
 		handleM sync.Mutex

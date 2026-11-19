@@ -112,13 +112,19 @@ func openRaw(ip net.IP, ifName string) (*rawReader, error) {
 func (r *rawReader) read(buf []byte) (Packet, bool, error) {
 	n, _, err := windows.Recvfrom(r.fd, buf, 0)
 	if err != nil {
-		if errors.Is(err, windows.WSAETIMEDOUT) || errors.Is(err, windows.WSAEMSGSIZE) {
+		if isTransientRecvErr(err) {
 			return Packet{}, false, nil
 		}
 		return Packet{}, false, err
 	}
 	pkt, ok := DecodeIPv4UDP(buf[:n])
 	return pkt, ok, nil
+}
+
+// isTransientRecvErr reports receive errors that are not fatal: the
+// SO_RCVTIMEO poll timeout and oversized (truncated) datagrams.
+func isTransientRecvErr(err error) bool {
+	return errors.Is(err, windows.WSAETIMEDOUT) || errors.Is(err, windows.WSAEMSGSIZE)
 }
 
 func (r *rawReader) close() error { return windows.Closesocket(r.fd) }

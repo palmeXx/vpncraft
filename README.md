@@ -161,6 +161,10 @@ Notes:
 - **Configuration:** the elevated process uses your normal user profile if your
   account is an administrator, so the config file stays at
   `%USERPROFILE%\.config\vpncraft\config.yaml`.
+- **Git Bash / mintty / MSYS2:** these terminals are not Windows consoles, so
+  vpncraft cannot detect a terminal there and runs headless instead of
+  starting the TUI. Use PowerShell, cmd or Windows Terminal for the TUI, or pass
+  flags / `-headless` to run headless on purpose.
 - **Window closes immediately:** start vpncraft from an elevated terminal to
   read the error message:
   `& "$env:LOCALAPPDATA\Programs\vpncraft\vpncraft.exe"`
@@ -542,7 +546,7 @@ sudo vpncraft -m relay -i tailscale0 -no-scan -peers 100.64.0.2,100.64.0.3
 | `Root/Admin privileges required` | Run with `sudo` or as Administrator (see [Privileges](#privileges)). |
 | `no interface set` / `interface "..." not found` | Set `interface:` in the config or pass `-i`. The message lists likely VPN interfaces. |
 | `Invalid configuration: config ...` | Fix the reported key; unknown keys are rejected. |
-| TUI does not start, plain output instead | vpncraft is not attached to a terminal, or flags other than `-config` were passed. |
+| TUI does not start, plain output instead | vpncraft is not attached to a terminal (e.g. Git Bash/mintty on Windows, pipes, services), or flags other than `-config` were passed. |
 | `Peer scan skipped: network ... is larger than the scan limit` | Set `scan.network` / `-scan-network`, or pick a range in the TUI. |
 | Scan finds no peers | Peers may block ICMP echo (ping). Add them manually with `a` or `-peers`. |
 | Games are not listed | Check that the peer runs relay mode, both peer groups are correct, and UDP 6112 is not blocked on the VPN interface. Use sniff mode on both sides to see which packets arrive. |

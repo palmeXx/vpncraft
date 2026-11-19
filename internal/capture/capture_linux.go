@@ -99,12 +99,18 @@ func (r *packetReader) read(buf []byte) (Packet, bool, error) {
 		}
 		return Packet{}, false, err
 	}
-	if ll, ok := from.(*unix.SockaddrLinklayer); ok &&
-		ll.Pkttype == unix.PACKET_OUTGOING && r.loopbacks[ll.Ifindex] {
+	if duplicateLoopback(from, r.loopbacks) {
 		return Packet{}, false, nil
 	}
 	pkt, ok := DecodeIPv4UDP(buf[:n])
 	return pkt, ok, nil
+}
+
+// duplicateLoopback reports whether from is the outgoing copy of a loopback
+// packet; AF_PACKET delivers it again as incoming on the same interface.
+func duplicateLoopback(from unix.Sockaddr, loopbacks map[int]bool) bool {
+	ll, ok := from.(*unix.SockaddrLinklayer)
+	return ok && ll.Pkttype == unix.PACKET_OUTGOING && loopbacks[ll.Ifindex]
 }
 
 func (r *packetReader) close() error { return unix.Close(r.fd) }
